@@ -1,0 +1,71 @@
+import telebot
+import urllib.request
+import json
+import os
+
+# Секретные данные
+API_TOKEN = '8443740271:AAGyItug2ccrN4FubDnEHe95AtCumELO2jA'
+CHANNEL_ID = -1003995005527
+MEMORY_FILE = 'channel_memory.txt'
+
+GEMINI_API_KEY = 'AQ.Ab8RN6L3Kb_-1ZLNER_gB0K-crat_86LQg_Z3t1GmWCkqWaUzw'
+
+bot = telebot.TeleBot(API_TOKEN)
+
+def save_to_memory(new_post):
+    history = []
+    if os.path.exists(MEMORY_FILE):
+        with open(MEMORY_FILE, 'r', encoding='utf-8') as f:
+            history = f.read().splitlines()
+    history.append(new_post)
+    if len(history) > 5:
+        history = history[-5:]
+    with open(MEMORY_FILE, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(history))
+    return ' '.join(history)
+
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    bot.reply_to(message, "я живой все круто классно работаю")
+
+@bot.message_handler(func=lambda message: message.chat.type == 'private')
+def echo_all(message):
+    bot.reply_to(message, "Че ты в личку строчишь иди в канал пиши")
+
+@bot.channel_post_handler(func=lambda message: message.chat.id == CHANNEL_ID)
+def handle_post(message):
+    text_from_post = message.text
+    if not text_from_post:
+        return
+
+    print("Вижу новый post, отправляю в Gemini...")
+    channel_history = save_to_memory(text_from_post)
+ prompt = f"""Ты — чутка грубый и шутливый суетолог ИИ-комментатор в Телеграм-канале. Твоя задача — писать живые и интересные комментарии к постам.
+ВАЖНЫЕ ПРАВИЛА ДЛЯ ТЕБЯ: 1.Всегда обращайся к автору канала по имени Химоз или Химоза. Делай это дружелюбно только к автору канала.
+2. Твой стиль общения: [ироничный, немного дерзкий].
+3. Обязательно используй в ответах такие слова-маркеры: [например: реально нахуй,пиздец,нет ну класс че,база ґрунт фундамент,].НЕ используй эти слова постоянно,только если контекст позволяет
+4.Никогда не пиши банальные фразы вроде 'Отличный пост!' или 'Полностью согласен'.
+5.Твой ответ должен быть не длиннее 4-5 предложений.
+    ОЧЕНЬ ВАЖНО (ТВОЯ ПАМЯТЬ):
+    Посмотри на темы, слова, шутки и маты, которые Химоза использовала в последних постах.
+    Учись ее стилю общения, подхватывай повторяющиеся темы и мемы из этой истории: {text_from_post}
+
+    ИСТОРИЯ ПОСЛЕДНИХ ПОСТОВ ДЛЯ ОБУЧЕНИЯ:
+    
+    url = f"https://googleapis.com{GEMINI_API_KEY}"
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    data = json.dumps(payload).encode('utf-8')
+
+    try:
+        req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=15) as response:
+            result = json.loads(response.read().decode('utf-8'))
+            bot_answer = result['candidates']['content']['parts']['text'].strip()
+        
+        bot.reply_to(message, bot_answer)
+        print("Комментарий успешно отправлен!")
+    except Exception as e:
+        print(f"Ошибка ИИ: {e}")
+
+print("Бот готов к запуску на Render...")
+bot.infinity_polling()
